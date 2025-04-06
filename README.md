@@ -1,1 +1,1 @@
-Academic RAG Chatbot 
+# Academic RAG Chatbot 
