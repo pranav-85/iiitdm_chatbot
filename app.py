@@ -14,7 +14,7 @@ def load_documents():
     all_docs = []
     
     for file in os.listdir("data/"):
-        if file.endsiwth('.pdf'):
+        if file.endswith('.pdf'):
             path = os.path.join("data", file)
             text = extract_text_from_pdf(path)
             splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
@@ -24,9 +24,9 @@ def load_documents():
     return all_docs
 
 @st.cache_resource
-def get_vector_store(docs):
+def get_vector_store(_docs):
     embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vectorstore = Chroma.from_documents(docs, embedding, persist_directory="chroma_store")
+    vectorstore = Chroma.from_documents(_docs, embedding, persist_directory="chroma_store")
     return vectorstore
 
 @st.cache_resource
