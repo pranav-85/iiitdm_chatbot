@@ -60,7 +60,7 @@ def load_phi():
 
 @st.cache_resource
 def get_qa_chain(vectorstore, phi_pipeline):
-    llm - HuggingFacePipeline(pipeline=phi_pipeline)
+    llm = HuggingFacePipeline(pipeline=phi_pipeline)
     retriever = vectorstore.as_retriever()
     qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
     return qa_chain
