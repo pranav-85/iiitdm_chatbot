@@ -37,7 +37,7 @@ def get_vector_store(_docs, index_path="faiss_index"):
 @st.cache_resource
 @st.cache_resource
 def load_phi():
-    model_name = "microsoft/Phi-3.5-mini-instruct"
+    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
