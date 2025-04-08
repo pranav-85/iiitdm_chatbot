@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import re
 from utils.pdf_reader import extract_text_from_pdf
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
@@ -8,6 +9,7 @@ from langchain.vectorstores import FAISS
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain.llms import HuggingFacePipeline
 from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
 
 @st.cache_resource
 def load_documents():
@@ -34,9 +36,9 @@ def get_vector_store(_docs, index_path="faiss_index"):
     vectorstore.save_local(index_path)
     return vectorstore
 
+
 @st.cache_resource
-@st.cache_resource
-def load_phi():
+def load_llama():
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -46,7 +48,7 @@ def load_phi():
         torch_dtype="auto"
     )
 
-    phi_pipeline = pipeline(
+    llama_pipeline = pipeline(
         "text-generation",
         model=model,
         tokenizer=tokenizer,
@@ -56,13 +58,39 @@ def load_phi():
         top_p=0.9
     )
 
-    return phi_pipeline
+    return llama_pipeline
 
 @st.cache_resource
-def get_qa_chain(vectorstore, phi_pipeline):
-    llm = HuggingFacePipeline(pipeline=phi_pipeline)
-    retriever = vectorstore.as_retriever()
-    qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
+def get_qa_chain(_vectorstore, _llama_pipeline):
+    # Define the LLM wrapper
+    llm = HuggingFacePipeline(pipeline=_llama_pipeline)
+
+    # Define your custom prompt template
+    prompt_template = """
+    You are a helpful assistant. Use the following context to answer the question as clearly and concisely as possible.
+
+    Context:
+    {context}
+
+    Question:
+    {question}
+
+    Answer:"""
+
+    prompt = PromptTemplate(
+        input_variables=["context", "question"],
+        template=prompt_template
+    )
+
+    # Create the QA chain with custom prompt
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=_vectorstore.as_retriever(),
+        chain_type="stuff",
+        chain_type_kwargs={"prompt": prompt},
+        return_source_documents=True  # Optional: include source documents in the result
+    )
+
     return qa_chain
 
 #Chatbot Interface
@@ -74,15 +102,34 @@ query = st.text_input("Ask your question:")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+# Function to extract lines that talk about degree credit requirements
+def extract_credit_info(text):
+    # Extract only the lines related to "CSE", "CSAI", etc., with credit info
+    lines = text.split("\n")
+    filtered = [
+        line.strip("-• ").strip()
+        for line in lines
+        if "CSE" in line or "CSAI" in line or "credit" in line.lower()
+    ]
+    return " ".join(filtered)
+
 if query:
     docs = load_documents()
     vectorstore = get_vector_store(docs)
-    phi_pipeline = load_phi()
-    qa_chain = get_qa_chain(vectorstore, phi_pipeline)
+    llama_pipeline = load_llama()
+    qa_chain = get_qa_chain(vectorstore, llama_pipeline)
 
-    answer = qa_chain.run(query)
-    st.session_state.chat_history.append((query, answer))
+    response = qa_chain.invoke({"query": query})
+    raw_answer = response["result"]
+    sources = response["source_documents"]
 
-for q, a in st.session.chat_history[::-1]:
-    st.markdown(f"**You:** {q}")
-    st.markdown(f"**Bot:** {a}")
+    cleaned_answer = extract_credit_info(raw_answer)
+    st.session_state.chat_history.append((query, cleaned_answer, sources))
+
+for q, a, s in reversed(st.session_state.chat_history):
+    st.markdown(f"**🧑 You:** {q}")
+    st.markdown(f"**🤖 Bot:** {a}")
+    with st.expander("📄 Source Documents"):
+        for i, doc in enumerate(s):
+            st.markdown(f"**Source {i+1}:**")
+            st.write(doc.page_content)
