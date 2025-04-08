@@ -39,7 +39,7 @@ def get_vector_store(_docs, index_path="faiss_index"):
 
 @st.cache_resource
 def load_llama():
-    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    model_name = "meta-llama/Llama-3.2-1B-Instruct"
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
@@ -102,16 +102,26 @@ query = st.text_input("Ask your question:")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# Function to extract lines that talk about degree credit requirements
-def extract_credit_info(text):
-    # Extract only the lines related to "CSE", "CSAI", etc., with credit info
-    lines = text.split("\n")
-    filtered = [
-        line.strip("-• ").strip()
-        for line in lines
-        if "CSE" in line or "CSAI" in line or "credit" in line.lower()
-    ]
-    return " ".join(filtered)
+def clean_response(text):
+    """
+    Generic cleaner to remove prompt template noise, context dumps, and leave a clean answer.
+    """
+    import re
+
+    # Remove leading template phrases
+    text = re.sub(r"(?i)^You are a helpful assistant.*?\n", "", text)
+
+    # Remove everything from 'Context:' to 'Question:' or 'Answer:' (if present)
+    text = re.sub(r"(?is)context:.*?(question:|answer:)", "", text)
+
+    # Remove “Question:” and “Answer:” headers
+    text = re.sub(r"(?i)question\s*:\s*", "", text)
+    text = re.sub(r"(?i)answer\s*:\s*", "", text)
+
+    # Remove redundant line breaks and whitespace
+    text = re.sub(r"\n+", "\n", text).strip()
+
+    return text
 
 if query:
     docs = load_documents()
@@ -121,11 +131,12 @@ if query:
 
     response = qa_chain.invoke({"query": query})
     raw_answer = response["result"]
+    cleaned_answer = clean_response(raw_answer)
     sources = response["source_documents"]
 
-    cleaned_answer = extract_credit_info(raw_answer)
     st.session_state.chat_history.append((query, cleaned_answer, sources))
 
+# Chat history display
 for q, a, s in reversed(st.session_state.chat_history):
     st.markdown(f"**🧑 You:** {q}")
     st.markdown(f"**🤖 Bot:** {a}")
